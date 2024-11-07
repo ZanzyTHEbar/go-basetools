@@ -4,7 +4,7 @@ import "github.com/spf13/viper"
 
 type Config struct {
 	Logger Logger `mapstructure:"logger"`
-	cfg    *viper.Viper
+	Cfg    *viper.Viper
 }
 
 type GoBaseToolsConfig interface {
