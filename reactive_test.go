@@ -6,6 +6,7 @@ import (
 )
 
 // TestSubscribe ensures that subscribers can subscribe and receive messages.
+// FIXME: Something here 
 func TestSubscribe(t *testing.T) {
 	obs := NewObservable[string]()
 	defer obs.Close()
