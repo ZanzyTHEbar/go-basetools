@@ -19,6 +19,12 @@ var LoggerLevels = map[string]slog.Level{
 	"error": slog.LevelError,
 }
 
+var LoggerStyles = map[string]bool{
+	"json": true,
+	"text": true,
+	"dev":  true,
+}
+
 // Set up the logger based on the configuration
 // Must be called before server is started
 func InitLogger(config *Config) {
