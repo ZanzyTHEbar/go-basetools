@@ -3,6 +3,12 @@
 [![semantic versioning](https://img.shields.io/badge/semantic%20versioning-2.0.0-green.svg)](https://semver.org)
 > All notable changes to this project will be documented in this file
 
+## [1.0.1](https://github.com/ZanzyTHEbar/go-basetools/compare/v1.0.0...v1.0.1) (2024-11-07)
+
+### 🧑‍💻 Code Refactoring
+
+* Add logger styles configuration for JSON, text, and development formats ([47cfbea](https://github.com/ZanzyTHEbar/go-basetools/commit/47cfbea55aea158672a61ad78ca6c9681de2bc98))
+
 ## 1.0.0 (2024-11-07)
 
 ### 🍕 Features
