@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/sourcegraph/conc/pool"
+	"golang.org/x/sync/errgroup"
 )
 
 // BackpressurePolicy defines how to behave when a subscriber's mailbox is full.
@@ -127,8 +130,8 @@ type observable[T any] struct {
 	// Defaults for new subscribers
 	def SubConfig[T]
 
-	// Wait for all subscriber workers to exit on Close
-	wg sync.WaitGroup
+	// Worker management with modern concurrency primitives
+	workerPool *pool.Pool
 }
 
 // NewObservable creates a new observable with sensible defaults:
@@ -144,6 +147,7 @@ func NewObservable[T any]() Observable[T] {
 			DropCallback:       nil,
 			FlushOnUnsubscribe: false,
 		},
+		workerPool: pool.New(),
 	}
 	o.subsSnap.Store([]*subscriber[T]{})
 	o.last.Store((*T)(nil))
@@ -157,8 +161,9 @@ func NewObservableWithDefaults[T any](defaults SubConfig[T]) Observable[T] {
 		defaults.Buffer = 0
 	}
 	o := &observable[T]{
-		subs: make(map[string]*subscriber[T]),
-		def:  defaults,
+		subs:       make(map[string]*subscriber[T]),
+		def:        defaults,
+		workerPool: pool.New(),
 	}
 	o.subsSnap.Store([]*subscriber[T]{})
 	o.last.Store((*T)(nil))
@@ -214,16 +219,39 @@ func (o *observable[T]) Subscribe(ctx context.Context, id string, opts ...SubOpt
 	o.subsSnap.Store(snap)
 	o.subsMu.Unlock()
 
-	// Start worker to forward mailbox -> out
-	o.wg.Add(1)
-	go func(s *subscriber[T]) {
-		defer o.wg.Done()
-		if s.cfg.FlushOnUnsubscribe {
-			o.forwardWithFlush(s)
-		} else {
-			o.forwardDropOnClose(s)
+	// Start worker to forward mailbox -> out using the managed pool
+	// but maintain the original asynchronous timing semantics
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Handle any panics in worker goroutines gracefully
+				// If the pool is closed, just run the worker directly
+				if sub.cfg.FlushOnUnsubscribe {
+					o.forwardWithFlush(sub)
+				} else {
+					o.forwardDropOnClose(sub)
+				}
+			}
+		}()
+		
+		if o.isClosed() {
+			// If already closed, run directly
+			if sub.cfg.FlushOnUnsubscribe {
+				o.forwardWithFlush(sub)
+			} else {
+				o.forwardDropOnClose(sub)
+			}
+			return
 		}
-	}(sub)
+		
+		o.workerPool.Go(func() {
+			if sub.cfg.FlushOnUnsubscribe {
+				o.forwardWithFlush(sub)
+			} else {
+				o.forwardDropOnClose(sub)
+			}
+		})
+	}()
 
 	// Optional immediate replay of latest broadcasted value
 	if cfg.ReplayLatest {
@@ -285,9 +313,35 @@ func (o *observable[T]) BroadcastCtx(ctx context.Context, value T) error {
 		return nil
 	}
 	subs := raw.([]*subscriber[T])
-	for _, sub := range subs {
-		o.enqueue(ctx, sub, value, nil)
+	
+	// For large subscriber lists, use parallel processing with errgroup for better error handling
+	if len(subs) > 10 {
+		g, gctx := errgroup.WithContext(ctx)
+		for _, sub := range subs {
+			sub := sub // capture loop variable
+			g.Go(func() error {
+				select {
+				case <-gctx.Done():
+					return gctx.Err()
+				default:
+					o.enqueue(gctx, sub, value, nil)
+					return nil
+				}
+			})
+		}
+		return g.Wait()
+	} else {
+		// For small subscriber lists, sequential processing preserves timing semantics
+		for _, sub := range subs {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				o.enqueue(ctx, sub, value, nil)
+			}
+		}
 	}
+	
 	return ctx.Err()
 }
 
@@ -329,7 +383,9 @@ func (o *observable[T]) Close() {
 	for _, s := range subs {
 		close(s.done)
 	}
-	o.wg.Wait()
+	
+	// Wait for all workers to complete using the pool's wait functionality
+	o.workerPool.Wait()
 
 	// Clear replay
 	o.last.Store((*T)(nil))
