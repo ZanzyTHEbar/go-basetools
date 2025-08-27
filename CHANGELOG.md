@@ -3,6 +3,12 @@
 [![semantic versioning](https://img.shields.io/badge/semantic%20versioning-2.0.0-green.svg)](https://semver.org)
 > All notable changes to this project will be documented in this file
 
+## [1.1.0](https://github.com/ZanzyTHEbar/go-basetools/compare/v1.0.2...v1.1.0) (2025-08-27)
+
+### 🍕 Features
+
+* add Cobra cli palette boiler plate ([cccb72e](https://github.com/ZanzyTHEbar/go-basetools/commit/cccb72e38a19dca8a691e82b73bef65765980f6b))
+
 ## [1.0.2](https://github.com/ZanzyTHEbar/go-basetools/compare/v1.0.1...v1.0.2) (2024-11-07)
 
 ### 🐛 Bug Fixes
